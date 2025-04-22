@@ -80,7 +80,6 @@ Highlight the most important features of your project:
 ## 📽️ Demo & Deliverables
 
 - **Demo Video Link:** [Paste YouTube or Loom link here]
-- **Pitch Deck / PPT Link:** [Paste Google Slides / PDF link here]
 
 ---
 
@@ -125,7 +124,6 @@ Enable Usage Access permission on first launch
 
 - Groq API (Groq.com)
 - Jetpack Compose & Room DB Docs
-- OpenMoji for inspiration in icons
 
 ---
 
