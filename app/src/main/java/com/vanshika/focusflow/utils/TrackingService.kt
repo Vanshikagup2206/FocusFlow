@@ -12,6 +12,7 @@ import android.speech.tts.UtteranceProgressListener
 import android.util.Log
 import android.widget.Toast
 import androidx.core.app.NotificationCompat
+import com.vanshika.focusflow.GroqApi.GROQ_API_KEY
 import com.vanshika.focusflow.R
 import com.vanshika.focusflow.database.FocusViewModel
 import kotlinx.coroutines.*
@@ -31,7 +32,6 @@ class TrackingService : Service(), TextToSpeech.OnInitListener {
         private const val NOTIFICATION_ID = 1
         private const val QUOTE_NOTIFICATION_ID = 1001
         private const val CHECK_INTERVAL_MS = 6000L
-        private const val GROQ_API_KEY = "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"
         private const val TTS_UTTERANCE_ID = "FocusFlowTTS"
     }
 
@@ -182,42 +182,36 @@ class TrackingService : Service(), TextToSpeech.OnInitListener {
     }
 
     private fun showMotivation(message: String, isFocus: Boolean) {
-        val emoji = if (isFocus) "💡" else "😈"
-        val title = "FocusFlow Alert"
+        try {
+            val emoji = if (isFocus) "💡" else "😈"
+            val title = if (isFocus) "Stay Focused!" else "Distraction Alert"
 
-        val notification = NotificationCompat.Builder(this, NOTIFICATION_CHANNEL_ID)
-            .setSmallIcon(R.drawable.baseline_show_chart_24)
-            .setContentTitle(title)
-            .setContentText("$emoji $message")
-            .setStyle(NotificationCompat.BigTextStyle().bigText("$emoji $message"))
-            .setPriority(NotificationCompat.PRIORITY_HIGH)
-            .setAutoCancel(true)
-            .build()
+            val notification = NotificationCompat.Builder(this, NOTIFICATION_CHANNEL_ID)
+                .setSmallIcon(R.drawable.baseline_show_chart_24)
+                .setContentTitle("$emoji $title")
+                .setContentText(message)
+                .setStyle(NotificationCompat.BigTextStyle().bigText(message))
+                .setPriority(NotificationCompat.PRIORITY_HIGH)
+                .setAutoCancel(true)
+                .build()
 
-        val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        manager.notify(QUOTE_NOTIFICATION_ID, notification)
+            val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            manager.notify(System.currentTimeMillis().toInt(), notification)
 
-        speak(message)
-        Log.d(TAG, "Notification shown: $message")
+            speak(message)
+            Log.d(TAG, "Notification shown: $message")
+        } catch (e: Exception) {
+            Log.e(TAG, "Notification failed", e)
+        }
     }
 
     private suspend fun getGroqMessage(isFocusApp: Boolean): String {
-        return withContext(Dispatchers.IO) {
-            try {
+        return try {
+            val response = withContext(Dispatchers.IO) {
                 val prompt = if (isFocusApp) {
-                    listOf(
-                        "Give a short motivational quote to help someone stay focused. Under 20 words.",
-                        "Share a powerful productivity quote in less than 20 words.",
-                        "Say something encouraging to help resist distractions. Max 20 words.",
-                        "Give a motivational one-liner to inspire focus. Short and punchy."
-                    ).random()
+                    "Give a short motivational quote to help someone stay focused. Under 20 words. Be creative."
                 } else {
-                    listOf(
-                        "Give a short, sarcastic roast for someone who can't stop scrolling. Keep it under 20 words.",
-                        "Roast someone distracted by YouTube in a funny way. Max 20 words.",
-                        "Write a witty insult for a procrastinator. Short and funny.",
-                        "Mock someone for constantly opening Instagram. Keep it light and under 20 words."
-                    ).random()
+                    "Give a short, sarcastic roast for someone who can't stop scrolling. Keep it under 20 words. Be funny."
                 }
 
                 val requestBody = JSONObject().apply {
@@ -226,48 +220,46 @@ class TrackingService : Service(), TextToSpeech.OnInitListener {
                     put("messages", JSONArray().apply {
                         put(JSONObject().apply {
                             put("role", "system")
-                            put("content", "You're a helpful assistant who gives ${if (isFocusApp) "uplifting motivational quotes" else "funny sarcastic roasts"}.")
+                            put("content", "You're a helpful assistant who gives ${if (isFocusApp) "motivational quotes" else "funny roasts"}.")
                         })
                         put(JSONObject().apply {
                             put("role", "user")
                             put("content", prompt)
                         })
                     })
-                }.toString().toRequestBody("application/json".toMediaType())
+                }.toString()
 
                 val request = Request.Builder()
                     .url("https://api.groq.com/openai/v1/chat/completions")
                     .addHeader("Authorization", "Bearer $GROQ_API_KEY")
                     .addHeader("Content-Type", "application/json")
-                    .post(requestBody)
+                    .post(requestBody.toRequestBody("application/json".toMediaType()))
                     .build()
 
-                client.newCall(request).execute().use { response ->
-                    if (!response.isSuccessful) {
-                        return@withContext defaultFallback(isFocusApp)
-                    }
-
-                    val body = response.body?.string()
-                    if (body.isNullOrEmpty()) {
-                        return@withContext defaultFallback(isFocusApp)
-                    }
-
-                    try {
-                        JSONObject(body)
-                            .getJSONArray("choices")
-                            .getJSONObject(0)
-                            .getJSONObject("message")
-                            .getString("content")
-                            .trim()
-                    } catch (e: Exception) {
-                        Log.e(TAG, "Error parsing response", e)
-                        defaultFallback(isFocusApp)
-                    }
-                }
-            } catch (e: Exception) {
-                Log.e(TAG, "Network error", e)
-                defaultFallback(isFocusApp)
+                client.newCall(request).execute()
             }
+
+            if (!response.isSuccessful) {
+                Log.e(TAG, "API request failed: ${response.code}")
+                return defaultFallback(isFocusApp)
+            }
+
+            val body = response.body?.string() ?: return defaultFallback(isFocusApp)
+            Log.d(TAG, "API response: $body") // Add this for debugging
+
+            val json = JSONObject(body)
+            val choices = json.getJSONArray("choices")
+            if (choices.length() == 0) return defaultFallback(isFocusApp)
+
+            val message = choices.getJSONObject(0)
+                .getJSONObject("message")
+                .getString("content")
+                .trim()
+
+            if (message.isBlank()) defaultFallback(isFocusApp) else message
+        } catch (e: Exception) {
+            Log.e(TAG, "Error in getGroqMessage", e)
+            defaultFallback(isFocusApp)
         }
     }
 
@@ -275,12 +267,6 @@ class TrackingService : Service(), TextToSpeech.OnInitListener {
         "You're capable of amazing things. Stay focused! 💪"
     else
         "Back to scrolling instead of growing? Classic. 😏"
-
-    private fun handleDistraction() {
-        distractionCount++
-        // Show notification/message
-        showMotivation("Avoid distractions! You've been distracted $distractionCount times today", false)
-    }
 
     // When session ends (e.g., when service stops or app closes)
     private fun saveCurrentSession() {
@@ -307,28 +293,34 @@ class TrackingService : Service(), TextToSpeech.OnInitListener {
         return true
     }
 
-    // [NEW] Distraction handler
     private fun handleDistraction(app: String) {
         distractionCount++
         Log.d(TAG, "Distraction detected on $app (Total: $distractionCount)")
 
         CoroutineScope(Dispatchers.IO).launch {
             try {
-                val message = getGroqMessage(false)
-                showNotification("⚠️ Distraction #$distractionCount", message, false)
+                val customMessage = getGroqMessage(false)
+                val fullMessage = "⚠️ Distraction #$distractionCount\n\n$customMessage"
+                withContext(Dispatchers.Main) {
+                    showMotivation(fullMessage, false)
+                }
             } catch (e: Exception) {
-                showNotification("⚠️ Distraction", "You got distracted! ($distractionCount today)", false)
+                val fallback = "You got distracted! ($distractionCount today)"
+                withContext(Dispatchers.Main) {
+                    showMotivation(fallback, false)
+                }
             }
         }
     }
 
-    // [NEW] Focus handler
     private fun handleFocus(app: String) {
         Log.d(TAG, "Focus app detected: $app")
         CoroutineScope(Dispatchers.IO).launch {
             try {
                 val message = getGroqMessage(true)
-                showNotification("🎯 Good focus!", message, true)
+                withContext(Dispatchers.Main) {
+                    showMotivation(message, true)
+                }
             } catch (e: Exception) {
                 Log.e(TAG, "Focus message error", e)
             }

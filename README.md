@@ -32,8 +32,8 @@ Target Audience:
 
 ### Team Name:
 Solo
-Github:https://github.com/Vanshikagup2206
-LinkedIn:https://www.linkedin.com/in/vanshika-gupta-192b31274/
+- Github:https://github.com/Vanshikagup2206
+- LinkedIn:https://www.linkedin.com/in/vanshika-gupta-192b31274/
 
 ### Team Members:
 - Vanshika Gupta 
@@ -79,7 +79,7 @@ Highlight the most important features of your project:
 
 ## 📽️ Demo & Deliverables
 
-- **Demo Video Link:** [Paste YouTube or Loom link here]
+- **Demo Video Link:** [https://youtu.be/1cUJRWxryAA?si=1vYFskbE398BJG4d]
 
 ---
 
